@@ -1,1 +1,1 @@
-# Dep-Mon-Parsing
+# A simple example of monadic parsing in the dependently typed setting
