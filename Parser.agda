@@ -11,8 +11,8 @@
 open import Utils 
 
 
--- we parametrise the definition of the parser over the type of tokens, constants and function symbols and
--- various conversion functions from tokens to constants, functions symbols, etc.
+-- we parametrise the definition of the parser over the type of tokens, constant and function symbols, and
+-- different conversion functions from tokens to constant symbols, functions symbols, etc.
 
 module Parser
     (Token : Set)
@@ -36,9 +36,9 @@ module Parser
   -- the (fibred) parser monad and its return and bind (based on Hutton and Meijer's Monadic Parsing in Haskell)
 
   P : Set -> Set
-  P A = Tokens -> (List (Tokens x A))
+  P A = Tokens -> List (Tokens x A)
 
-  Pf : {A B : Set} -> (A -> B) -> (P A -> P B)
+  Pf : {A B : Set} -> (A -> B) -> P A -> P B
   Pf f p tok = map (\ x -> (fst x) , f (snd x)) (p tok)
 
   return : {A : Set} -> A -> P A
@@ -46,12 +46,6 @@ module Parser
 
   bind : {A : Set} {B : Set} -> P A -> (A -> P B) -> P B
   bind p f tok = listBind (p tok) (\ x -> f (snd x) (fst x))
-
-
-  -- syntactic sugar for the composition of the parser monad with the sima-type
-
-  PSigma : (A : Set) -> (B : A -> Set) -> Set
-  PSigma A B = P (Sigma A B)
 
 
   -- algebraic operations and generic effects for the parser monad, based on the observation that the parser monad
@@ -92,7 +86,7 @@ module Parser
   --
   --   t ::= c | f t1 ... tn
   --
-  -- it consists of constants and applications of function symbols to non-empty lists of terms
+  -- i.e., it consists of constants and applications of function symbols to non-empty lists of terms
 
   mutual 
   
@@ -109,13 +103,36 @@ module Parser
 
   mutual
   
-    {-# NO_TERMINATION_CHECK #-}
+    {-# TERMINATING #-}
 
-    -- the top-level parser for the whole language
+    -- the top-level parser for the language
 
-    parser : PSigma Types Terms
+    parser : P (Sigma Types Terms)
     parser = or parseConst parseFunApp
-                
+
+
+    -- the sub-parser for constants
+
+    parseConst : P (Sigma Types Terms)
+    parseConst = bind (parseAndTest tokenToConstSym) (\ c -> return (typeOfConst c , const c))
+
+
+    -- the sub-parser for function applications
+
+    parseFunApp : P (Sigma Types Terms)
+    parseFunApp = bind (parseAndTest tokenToFunSym)
+                       (\ f -> bind (parseNEArgumentList (fst (typeOfFun f)))
+                                    (\ args -> return (snd (typeOfFun f) , app f args)))
+
+
+    -- parsing the non-empty lists of arguments in function applications
+
+    parseNEArgumentList : (tys : NEList Types) -> P (NEArgumentList tys)
+    parseNEArgumentList [ ty ]      = bind (parseTermOfGivenType ty) (\ tm -> return [ tm ])
+    parseNEArgumentList (ty :: tys) = bind (parseTermOfGivenType ty)
+                                           (\ tm -> bind (parseNEArgumentList tys)
+                                                         (\ tms -> return (tm :: tms)))
+                                                 
 
     -- parsing a term of given type
 
@@ -123,27 +140,3 @@ module Parser
     parseTermOfGivenType ty = 
       bind parser 
            (\ p -> +-elim {C = \ _ -> P (Terms ty)} (decTypeEq (fst p) ty) (\ q -> return (transport {B = Terms} q (snd p))) (\ _ -> fail))
-
-
-    -- the sub-parser for constants
-
-    parseConst : PSigma Types Terms
-    parseConst = bind (parseAndTest tokenToConstSym) (\ c -> return (typeOfConst c , const c))
-
-
-    -- parsing the non-empty list of arguments in function applications
-
-    parseNEArgumentList : (tys : NEList Types) -> P (NEArgumentList tys)
-    parseNEArgumentList [ ty ]      = bind (parseTermOfGivenType ty) (\ tm -> return [ tm ])
-    parseNEArgumentList (ty :: tys) = bind (parseTermOfGivenType ty)
-                                           (\ tm -> bind (parseNEArgumentList tys)
-                                                         (\ tms -> return (tm :: tms)))
-
-
-    -- the sub-parser for function applications
-
-    parseFunApp : PSigma Types Terms
-    parseFunApp = bind (parseAndTest tokenToFunSym)
-                       (\ f -> bind (parseNEArgumentList (fst (typeOfFun f)))
-                                    (\ args -> return (snd (typeOfFun f) , app f args)))
-                                                 
