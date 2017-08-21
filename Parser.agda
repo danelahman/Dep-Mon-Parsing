@@ -55,8 +55,8 @@ module Parser
   lkp : P Tokens
   lkp toks = (toks , toks) :: []
 
-  upd : Tokens -> P One
-  upd toks1 toks2 = (toks1 , *) :: []
+  put : Tokens -> P One
+  put toks1 toks2 = (toks1 , *) :: []
 
   or : {A : Set} -> P A -> P A -> P A
   or p1 p2 tok = append (p1 tok) (p2 tok)
@@ -70,7 +70,7 @@ module Parser
   parseToken : P Token
   parseToken = bind lkp
                     (\ { [] -> fail; 
-                         (tok :: toks) -> bind (upd toks)
+                         (tok :: toks) -> bind (put toks)
                                                (\ _ -> return tok) })
 
   parseAndConvert : {X : Set} -> (Token -> X) -> P X
